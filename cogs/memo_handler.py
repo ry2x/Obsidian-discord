@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import config
 import aiohttp
 from bs4 import BeautifulSoup
+import hashlib
+from urllib.parse import urlparse
 
 def get_template(date_obj):
     """指定された日付のテンプレート文字列を生成する"""
@@ -23,7 +25,7 @@ def get_template(date_obj):
 """
 
 async def get_url_summary(url):
-    """URLからタイトルとdescriptionを取得する"""
+    """URLからタイトル、description、og:imageを取得する"""
     print(f"[DEBUG] Attempting to fetch URL: {url}")
     try:
         async with aiohttp.ClientSession() as session:
@@ -35,16 +37,64 @@ async def get_url_summary(url):
                     title = soup.title.string if soup.title else 'タイトルなし'
                     description_tag = soup.find('meta', attrs={'name': 'description'})
                     description = description_tag['content'] if description_tag else '説明文なし'
+                    
+                    og_image_url = None
+                    og_image_tag = soup.find('meta', property='og:image')
+                    if og_image_tag and 'content' in og_image_tag.attrs:
+                        og_image_url = og_image_tag['content']
+                        print(f"[DEBUG] Extracted og:image: {og_image_url}")
+
                     print(f"[DEBUG] Extracted Title: {title.strip()}, Description: {description.strip()}")
-                    return f"タイトル: {title.strip()}\n説明: {description.strip()}"
+                    return f"タイトル: {title.strip()}\n説明: {description.strip()}", og_image_url
                 else:
-                    return f"ページの取得に失敗しました。ステータスコード: {response.status}"
+                    return f"ページの取得に失敗しました。ステータスコード: {response.status}", None
     except aiohttp.ClientError as e:
         print(f"[ERROR] aiohttp ClientError fetching URL {url}: {e}")
-        return "URLの取得中にネットワークエラーが発生しました。"
+        return "URLの取得中にネットワークエラーが発生しました。", None
     except Exception as e:
         print(f"[ERROR] Unexpected error fetching or parsing URL {url}: {e}")
-        return "URLの処理中に予期せぬエラーが発生しました。"
+        return "URLの処理中に予期せぬエラーが発生しました。", None
+
+async def download_thumbnail(url, base_filename):
+    """指定されたURLから画像をダウンロードし、適切な拡張子で保存する"""
+    print(f"[DEBUG] Attempting to download thumbnail from: {url}")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'image/' in content_type:
+                        # Content-Typeから適切な拡張子を決定
+                        if 'image/jpeg' in content_type:
+                            ext = '.jpg'
+                        elif 'image/png' in content_type:
+                            ext = '.png'
+                        elif 'image/gif' in content_type:
+                            ext = '.gif'
+                        elif 'image/webp' in content_type:
+                            ext = '.webp'
+                        else:
+                            print(f"[DEBUG] Unsupported image content type: {content_type}")
+                            return None
+
+                        filename = f"{base_filename}{ext}"
+                        save_path = os.path.join(config.IMAGE_SAVE_DIR, filename)
+                        with open(save_path, 'wb') as f:
+                            f.write(await response.read())
+                        print(f"[DEBUG] Saved thumbnail: {save_path}")
+                        return filename
+                    else:
+                        print(f"[DEBUG] URL content is not an image: {content_type}")
+                        return None
+                else:
+                    print(f"[ERROR] Failed to download thumbnail from {url}. Status: {response.status}")
+                    return None
+    except aiohttp.ClientError as e:
+        print(f"[ERROR] aiohttp ClientError downloading thumbnail {url}: {e}")
+        return None
+    except Exception as e:
+        print(f"[ERROR] Unexpected error downloading thumbnail {url}: {e}")
+        return None
 
 class MemoHandler(commands.Cog):
     def __init__(self, bot):
@@ -87,20 +137,41 @@ class MemoHandler(commands.Cog):
                         content_to_append += f"\n![[{attachment.filename}]]\n"
                         print(f"[DEBUG] Saved image: {save_path}")
 
-            # URLを検出して要約を追加
+            # URLを検出して要約とサムネイルを追加
             url_match = re.search(r'https?://\S+', message.content)
             if url_match:
                 url = url_match.group(0)
                 print(f"[DEBUG] URL detected: {url}")
-                summary = await get_url_summary(url)
+                summary, og_image_url = await get_url_summary(url)
                 content_to_append += f"\n> URLの概要:\n> {summary.replace('\n', '\n> ')}\n"
+
+                if og_image_url:
+                    # サムネイルのファイル名を生成 (URLのハッシュ値と拡張子を使用)
+                    import hashlib
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(og_image_url)
+                    path_parts = parsed_url.path.split('/')
+                    original_filename = path_parts[-1] if path_parts[-1] else 'image'
+                    
+                    # 拡張子を抽出
+                    ext = os.path.splitext(original_filename)[1]
+                    if not ext: # 拡張子がない場合、デフォルトで.png
+                        ext = '.png'
+                    
+                    # URLのハッシュ値と元のファイル名からユニークなファイル名を生成
+                    hash_object = hashlib.md5(og_image_url.encode())
+                    base_thumbnail_filename = f"thumbnail_{hash_object.hexdigest()}"
+
+                    downloaded_filename = await download_thumbnail(og_image_url, base_thumbnail_filename)
+                    if downloaded_filename:
+                        content_to_append += f"\n![[{downloaded_filename}]]\n"
             else:
                 print(f"[DEBUG] No URL detected in message: {message.content}")
             
             with open(file_path, 'a', encoding='utf-8') as f:
                 f.write(content_to_append)
             
-            print(f"[DEBUG] Appended message to {file_path}")
+            
 
 async def setup(bot):
     await bot.add_cog(MemoHandler(bot))
