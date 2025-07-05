@@ -7,6 +7,8 @@ import aiohttp
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from logger_config import logger
+from discord import app_commands, Interaction, Message
+import discord
 
 def get_template(date_obj):
     """指定された日付のテンプレート文字列を生成する"""
@@ -36,7 +38,7 @@ async def get_url_summary(url):
                     title = soup.title.string if soup.title else 'タイトルなし'
                     description_tag = soup.find('meta', attrs={'name': 'description'})
                     description = description_tag['content'] if description_tag else '説明文なし'
-                    
+
                     og_image_url = None
                     og_image_tag = soup.find('meta', property='og:image')
                     if og_image_tag and 'content' in og_image_tag.attrs:
@@ -98,79 +100,92 @@ async def download_thumbnail(url, base_filename):
 class MemoHandler(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.add_to_memo_context_menu = app_commands.ContextMenu(
+            name='メモに追加',
+            callback=self.add_to_memo_callback,
+        )
+        self.bot.tree.add_command(self.add_to_memo_context_menu)
+
         # 保存ディレクトリが存在しない場合は作成
         for dir_path in [config.SAVE_DIR, config.IMAGE_SAVE_DIR]:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
                 logger.info(f"Created directory: {dir_path}")
 
+    async def process_message_for_memo(self, message: Message, force_add: bool = False):
+        """メッセージを処理してメモファイルに追記する共通ロジック"""
+        if not force_add and message.channel.id != config.CHANNEL_ID:
+            logger.debug(f"Message is not in target channel: {message.channel.id}")
+            return
+
+        today = datetime.now().date()
+        file_name = f"{today.strftime('%Y-%m-%d')}.md"
+        file_path = os.path.join(config.SAVE_DIR, file_name)
+
+        if not os.path.exists(file_path):
+            template = get_template(today)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(template)
+
+        timestamp = datetime.now().strftime('%H:%M')
+        # ユーザー情報を追記
+        content_to_append = f"\n{timestamp} - {message.author.display_name}\n{message.content}\n"
+
+        # 添付画像を保存してリンクを追記
+        if message.attachments:
+            logger.debug(f"Message has attachments.")
+            for attachment in message.attachments:
+                if attachment.content_type and attachment.content_type.startswith('image/'):
+                    save_path = os.path.join(config.IMAGE_SAVE_DIR, attachment.filename)
+                    await attachment.save(save_path)
+                    content_to_append += f"\n![[{attachment.filename}]]\n"
+                    logger.debug(f"Saved image: {save_path}")
+
+        # URLを検出して要約とサムネイルを追加
+        url_match = re.search(r'https?://\S+', message.content)
+        if url_match:
+            url = url_match.group(0)
+            logger.debug(f"URL detected: {url}")
+            summary, og_image_url = await get_url_summary(url)
+            content_to_append += f"\n> URLの概要:\n> {summary.replace('\n', '\n> ')}\n"
+
+            if og_image_url:
+                import hashlib
+                parsed_url = urlparse(og_image_url)
+                path_parts = parsed_url.path.split('/')
+                original_filename = path_parts[-1] if path_parts[-1] else 'image'
+                ext = os.path.splitext(original_filename)[1] or '.png'
+                hash_object = hashlib.md5(og_image_url.encode())
+                base_thumbnail_filename = f"thumbnail_{hash_object.hexdigest()}"
+                downloaded_filename = await download_thumbnail(og_image_url, base_thumbnail_filename)
+                if downloaded_filename:
+                    content_to_append += f"\n![[{downloaded_filename}]]\n"
+        else:
+            logger.debug(f"No URL detected in message: {message.content}")
+
+        with open(file_path, 'a', encoding='utf-8') as f:
+            f.write(content_to_append)
+        logger.info(f"Appended message from {message.author.display_name} to {file_name}")
+
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: Message):
         """メッセージが投稿されたときに実行される"""
         if message.author == self.bot.user:
             return
 
         logger.debug(f"Message received from {message.author}: {message.content}")
+        await self.process_message_for_memo(message)
 
-        if message.channel.id == config.CHANNEL_ID:
-            logger.debug(f"Message is in target channel: {config.CHANNEL_ID}")
-            today = datetime.now().date()
-            file_name = f"{today.strftime('%Y-%m-%d')}.md"
-            file_path = os.path.join(config.SAVE_DIR, file_name)
+    async def add_to_memo_callback(self, interaction: Interaction, message: Message):
+        """コンテキストメニューから呼び出されたときの処理"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await self.process_message_for_memo(message, force_add=True)
+            await interaction.followup.send("メッセージを本日のメモに追加しました。", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to add message to memo from context menu: {e}")
+            await interaction.followup.send("メモへの追加中にエラーが発生しました。", ephemeral=True)
 
-            if not os.path.exists(file_path):
-                template = get_template(today)
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(template)
-
-            timestamp = message.created_at.strftime('%H:%M')
-            content_to_append = f"\n{timestamp} -\n {message.content}\n"
-
-            # 添付画像を保存してリンクを追記
-            if message.attachments:
-                logger.debug(f"Message has attachments.")
-                for attachment in message.attachments:
-                    if attachment.content_type and attachment.content_type.startswith('image/'):
-                        save_path = os.path.join(config.IMAGE_SAVE_DIR, attachment.filename)
-                        await attachment.save(save_path)
-                        content_to_append += f"\n![[{attachment.filename}]]\n"
-                        logger.debug(f"Saved image: {save_path}")
-
-            # URLを検出して要約とサムネイルを追加
-            url_match = re.search(r'https?://\S+', message.content)
-            if url_match:
-                url = url_match.group(0)
-                logger.debug(f"URL detected: {url}")
-                summary, og_image_url = await get_url_summary(url)
-                content_to_append += f"\n> URLの概要:\n> {summary.replace('\n', '\n> ')}\n"
-
-                if og_image_url:
-                    # サムネイルのファイル名を生成 (URLのハッシュ値と拡張子を使用)
-                    import hashlib
-                    from urllib.parse import urlparse
-                    parsed_url = urlparse(og_image_url)
-                    path_parts = parsed_url.path.split('/')
-                    original_filename = path_parts[-1] if path_parts[-1] else 'image'
-                    
-                    # 拡張子を抽出
-                    ext = os.path.splitext(original_filename)[1]
-                    if not ext: # 拡張子がない場合、デフォルトで.png
-                        ext = '.png'
-                    
-                    # URLのハッシュ値と元のファイル名からユニークなファイル名を生成
-                    hash_object = hashlib.md5(og_image_url.encode())
-                    base_thumbnail_filename = f"thumbnail_{hash_object.hexdigest()}"
-
-                    downloaded_filename = await download_thumbnail(og_image_url, base_thumbnail_filename)
-                    if downloaded_filename:
-                        content_to_append += f"\n![[{downloaded_filename}]]\n"
-            else:
-                logger.debug(f"No URL detected in message: {message.content}")
-            
-            with open(file_path, 'a', encoding='utf-8') as f:
-                f.write(content_to_append)
-            
-            
 
 async def setup(bot):
     await bot.add_cog(MemoHandler(bot))

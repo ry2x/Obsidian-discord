@@ -2,6 +2,8 @@ import asyncio
 import datetime
 import os
 from discord.ext import commands, tasks
+from discord import app_commands
+import discord
 
 import config
 from ai_summarizer import summarize_and_tag
@@ -50,7 +52,7 @@ class SummaryCog(commands.Cog):
                     f.seek(f.tell() - 1, os.SEEK_SET)
                     if f.read(1) != '\n':
                         f.write('\n')
-                        
+
                 f.write('\n## まとめ\n')
                 f.write(summary + '\n')
                 f.write(tags + '\n')
@@ -74,14 +76,14 @@ class SummaryCog(commands.Cog):
             next_run += datetime.timedelta(days=1)
         await asyncio.sleep((next_run - now).total_seconds())
 
-    @commands.command()
+    @app_commands.command(name="today_summary", description="本日のメモファイルに対してサマリー作成を実行します。")
     @commands.is_owner()
-    async def test_summary(self, ctx):
-        """本日のメモファイルに対してサマリー作成をテスト実行します。"""
-        await ctx.send("本日のメモの要約を作成します...")
+    async def today_summary(self, interaction: discord.Interaction):
+        """本日のメモファイルに対してサマリー作成を実行します。"""
+        await interaction.response.send_message("本日のメモの要約を作成します...", ephemeral=True)
         today = datetime.date.today()
         result = await self._run_summary(today)
-        await ctx.send(result)
+        await interaction.followup.send(result, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(SummaryCog(bot))
