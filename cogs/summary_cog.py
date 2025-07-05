@@ -6,7 +6,7 @@ from discord import app_commands
 import discord
 
 import config
-from ai_summarizer import summarize_and_tag
+from ai_summarizer import summarize_and_tag_and_explain
 from logger_config import logger
 
 class SummaryCog(commands.Cog):
@@ -18,7 +18,7 @@ class SummaryCog(commands.Cog):
         self.daily_summary.cancel()
 
     async def _run_summary(self, date_to_summarize: datetime.date):
-        """指定された日付のメモを要約する共通ロジック"""
+        """指定された日付のメモを要約し、タグファイルを作成する共通ロジック"""
         file_path = os.path.join(config.SAVE_DIR, f"{date_to_summarize.strftime('%Y-%m-%d')}.md")
 
         if not os.path.exists(file_path):
@@ -43,21 +43,34 @@ class SummaryCog(commands.Cog):
                     logger.info(f"Memo content is empty for {file_path}")
                     return "メモの内容が空です。"
 
-                summary, tags = summarize_and_tag(memo_content)
+                summary, tags, explanations = summarize_and_tag_and_explain(memo_content)
 
-                # ファイルの末尾に追記するために、ポインタを末尾に移動
+                # 1. 元のメモファイルにまとめとタグを追記
                 f.seek(0, os.SEEK_END)
-                # ファイルの末尾が改行でない場合は、改行を追加
                 if f.tell() > 0:
                     f.seek(f.tell() - 1, os.SEEK_SET)
                     if f.read(1) != '\n':
                         f.write('\n')
-
                 f.write('\n## まとめ\n')
                 f.write(summary + '\n')
                 f.write(tags + '\n')
-                logger.info(f"Added summary to {file_path}")
-                return f"{date_to_summarize.strftime('%Y-%m-%d')}のメモにまとめを追記しました。"
+                logger.info(f"Added summary and tags to {file_path}")
+
+                # 2. タグごとの解説ファイルを作成
+                if not os.path.exists(config.NOTES_DIR):
+                    os.makedirs(config.NOTES_DIR)
+                    logger.info(f"Created directory: {config.NOTES_DIR}")
+
+                for tag, explanation in explanations.items():
+                    tag_file_path = os.path.join(config.NOTES_DIR, f"{tag}.md")
+                    with open(tag_file_path, 'w', encoding='utf-8') as tag_f:
+                        date_str = date_to_summarize.strftime('%Y-%m-%d')
+                        # 新しいフォーマットでファイル内容を構成
+                        file_content = f"# {tag}\n\n[[{date_str}]]\n\n{explanation}\n\n#{tag}"
+                        tag_f.write(file_content)
+                    logger.info(f"Created tag explanation file: {tag_file_path}")
+
+                return f"{date_to_summarize.strftime('%Y-%m-%d')}のメモの要約とタグ付けが完了しました。"
 
         except Exception as e:
             logger.error(f"Error processing {file_path}: {e}")
@@ -80,7 +93,7 @@ class SummaryCog(commands.Cog):
     @commands.is_owner()
     async def today_summary(self, interaction: discord.Interaction):
         """本日のメモファイルに対してサマリー作成を実行します。"""
-        await interaction.response.send_message("本日のメモの要約を作成します...", ephemeral=True)
+        await interaction.response.send_message("本日のメモの要約とタグ解説の作成を開始します...", ephemeral=True)
         today = datetime.date.today()
         result = await self._run_summary(today)
         await interaction.followup.send(result, ephemeral=True)
