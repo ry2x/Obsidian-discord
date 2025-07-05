@@ -54,7 +54,7 @@ class SummaryCog(commands.Cog):
                 f.write('\n## まとめ\n')
                 f.write(summary + '\n')
                 f.write(tags + '\n')
-                logger.info(f"Added summary to {file_to_summarize}")
+                logger.info(f"Added summary to {file_path}")
                 return f"{date_to_summarize.strftime('%Y-%m-%d')}のメモにまとめを追記しました。"
 
         except Exception as e:
