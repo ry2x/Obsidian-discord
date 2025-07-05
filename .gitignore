@@ -8,4 +8,5 @@ __pycache__/
 # Generated files
 memos/
 images/
+notes/
 bot.log
