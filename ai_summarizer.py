@@ -1,5 +1,6 @@
 import google.generativeai as genai
 import config
+from logger_config import logger
 
 # APIキーの設定
 if not config.GEMINI_API_KEY:
@@ -51,14 +52,14 @@ def summarize_and_tag(text: str) -> tuple[str, str]:
         summary = "\n".join(summary_lines)
         tags = tags_line if tags_line else "#general"
 
-        print(f"--- AI Summarizer (Gemini) ---")
-        print(f"Generated Summary: {summary}")
-        print(f"Generated Tags: {tags}")
-        print(f"---------------------------------")
+        logger.info(f"--- AI Summarizer (Gemini) ---")
+        logger.info(f"Generated Summary: {summary}")
+        logger.info(f"Generated Tags: {tags}")
+        logger.info(f"---------------------------------")
 
         return summary, tags
 
     except Exception as e:
-        print(f"[Error] Failed to generate summary with Gemini: {e}")
+        logger.error(f"[Error] Failed to generate summary with Gemini: {e}")
         # エラーが発生した場合は、フォールバックとして簡単なサマリーを返す
         return f"要約の生成中にエラーが発生しました。", "#error"

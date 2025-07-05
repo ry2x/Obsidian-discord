@@ -1,9 +1,9 @@
-
 import discord
 from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import config
+from logger_config import logger
 
 # .envファイルから環境変数を読み込む
 load_dotenv()
@@ -22,14 +22,14 @@ async def on_ready():
     for filename in os.listdir('./cogs'):
         if filename.endswith('.py'):
             await bot.load_extension(f'cogs.{filename[:-3]}')
-            print(f'Loaded cog: {filename[:-3]}')
+            logger.info(f'Loaded cog: {filename[:-3]}')
 
     # 保存ディレクトリが存在しない場合は作成
     if not os.path.exists(config.SAVE_DIR):
         os.makedirs(config.SAVE_DIR)
-        print(f"Created directory: {config.SAVE_DIR}")
+        logger.info(f"Created directory: {config.SAVE_DIR}")
         
-    print(f'We have logged in as {bot.user}')
+    logger.info(f'We have logged in as {bot.user}')
 
 # Botを起動
 bot.run(os.getenv('DISCORD_TOKEN'))

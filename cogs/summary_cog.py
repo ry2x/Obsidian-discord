@@ -5,6 +5,7 @@ from discord.ext import commands, tasks
 
 import config
 from ai_summarizer import summarize_and_tag
+from logger_config import logger
 
 class SummaryCog(commands.Cog):
     def __init__(self, bot):
@@ -19,7 +20,7 @@ class SummaryCog(commands.Cog):
         file_path = os.path.join(config.SAVE_DIR, f"{date_to_summarize.strftime('%Y-%m-%d')}.md")
 
         if not os.path.exists(file_path):
-            print(f"[SummaryCog] Memo file for {date_to_summarize.strftime('%Y-%m-%d')} not found.")
+            logger.warning(f"Memo file for {date_to_summarize.strftime('%Y-%m-%d')} not found.")
             return "対象のメモファイルが見つかりませんでした。"
 
         try:
@@ -27,17 +28,17 @@ class SummaryCog(commands.Cog):
                 content = f.read()
 
                 if '## まとめ' in content:
-                    print(f"[SummaryCog] Summary already exists for {file_path}")
+                    logger.info(f"Summary already exists for {file_path}")
                     return "既にまとめが存在します。"
 
                 memo_section = content.split('## メモ')
                 if len(memo_section) < 2:
-                    print(f"[SummaryCog] '## メモ' section not found in {file_path}")
+                    logger.warning(f"'## メモ' section not found in {file_path}")
                     return "メモセクションが見つかりませんでした。"
 
                 memo_content = memo_section[1]
                 if not memo_content.strip():
-                    print(f"[SummaryCog] Memo content is empty for {file_path}")
+                    logger.info(f"Memo content is empty for {file_path}")
                     return "メモの内容が空です。"
 
                 summary, tags = summarize_and_tag(memo_content)
@@ -53,11 +54,11 @@ class SummaryCog(commands.Cog):
                 f.write('\n## まとめ\n')
                 f.write(summary + '\n')
                 f.write(tags + '\n')
-                print(f"[SummaryCog] Added summary to {file_path}")
+                logger.info(f"Added summary to {file_to_summarize}")
                 return f"{date_to_summarize.strftime('%Y-%m-%d')}のメモにまとめを追記しました。"
 
         except Exception as e:
-            print(f"[SummaryCog] Error processing {file_path}: {e}")
+            logger.error(f"Error processing {file_path}: {e}")
             return f"処理中にエラーが発生しました: {e}"
 
     @tasks.loop(hours=24)
@@ -84,4 +85,4 @@ class SummaryCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(SummaryCog(bot))
-    print("Loaded cog: summary_cog")
+    logger.info("Loaded cog: summary_cog")
