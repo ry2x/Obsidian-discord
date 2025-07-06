@@ -128,8 +128,7 @@ class MemoHandler(commands.Cog):
                 f.write(template)
 
         timestamp = datetime.now().strftime('%H:%M')
-        # ユーザー情報を追記
-        content_to_append = f"\n{timestamp} - {message.author.display_name}\n{message.content}\n"
+        content_to_append = f"\n{timestamp}\n{message.content}\n"
 
         # 添付画像を保存してリンクを追記
         if message.attachments:
