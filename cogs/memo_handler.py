@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from logger_config import logger
 from discord import app_commands, Interaction, Message
 import discord
+from ai_summarizer import generate_flash_supplement
 
 def get_template(date_obj):
     """指定された日付のテンプレート文字列を生成する"""
@@ -161,6 +162,10 @@ class MemoHandler(commands.Cog):
                     content_to_append += f"\n![[{downloaded_filename}]]\n"
         else:
             logger.debug(f"No URL detected in message: {message.content}")
+
+        # AIによる補足を生成
+        supplement = generate_flash_supplement(message.content)
+        content_to_append += f"\n> [!info] AI's Small Tip\n> {supplement.replace('\n', '\n> ')}\n"
 
         with open(file_path, 'a', encoding='utf-8') as f:
             f.write(content_to_append)
