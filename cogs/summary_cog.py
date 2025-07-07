@@ -43,7 +43,8 @@ class SummaryCog(commands.Cog):
                     logger.info(f"Memo content is empty for {file_path}")
                     return "メモの内容が空です。"
 
-                summary, tags, explanations = summarize_and_tag_and_explain(memo_content)
+                date_str = date_to_summarize.strftime('%Y-%m-%d')
+                summary, tags, explanations = summarize_and_tag_and_explain(memo_content, date_str)
 
                 # 1. 元のメモファイルにまとめとタグを追記
                 f.seek(0, os.SEEK_END)
@@ -56,19 +57,26 @@ class SummaryCog(commands.Cog):
                 f.write(tags + '\n')
                 logger.info(f"Added summary and tags to {file_path}")
 
-                # 2. タグごとの解説ファイルを作成
+                # 2. タグごとの解説ファイルを作成し、デイリーノートにバックリンクを追記
                 if not os.path.exists(config.NOTES_DIR):
                     os.makedirs(config.NOTES_DIR)
                     logger.info(f"Created directory: {config.NOTES_DIR}")
 
+                backlinks = []
                 for tag, explanation in explanations.items():
                     tag_file_path = os.path.join(config.NOTES_DIR, f"{tag}.md")
                     with open(tag_file_path, 'w', encoding='utf-8') as tag_f:
                         date_str = date_to_summarize.strftime('%Y-%m-%d')
-                        # 新しいフォーマットでファイル内容を構成
                         file_content = f"# {tag}\n\n[[{date_str}]]\n\n{explanation}\n\n#{tag}"
                         tag_f.write(file_content)
                     logger.info(f"Created tag explanation file: {tag_file_path}")
+                    backlinks.append(f"[[{tag}]]")
+
+                # 3. デイリーノートにバックリンクを追記
+                if backlinks:
+                    f.write('\n## 詳細ノート\n')
+                    f.write(' '.join(backlinks) + '\n')
+                    logger.info(f"Added backlinks to {file_path}")
 
                 return f"{date_to_summarize.strftime('%Y-%m-%d')}のメモの要約とタグ付けが完了しました。"
 
