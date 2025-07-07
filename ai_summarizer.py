@@ -1,12 +1,12 @@
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+from google.generativeai import types
 import config
 from logger_config import logger
 
 # APIキーの設定
 if not config.GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
-client = genai.Client(api_key=config.GEMINI_API_KEY)
+genai.configure(api_key=config.GEMINI_API_KEY)
 
 def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, dict[str, str]]:
     """
@@ -48,12 +48,9 @@ def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, d
     """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
-            )
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+        response = model.generate_content(
+            contents=prompt
         )
 
         # レスポンスをセクションに分割
@@ -103,8 +100,8 @@ def generate_flash_supplement(text: str) -> str:
     """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
+        model = genai.GenerativeModel(model_name="gemini-2.0-flash")
+        response = model.generate_content(
             contents=prompt
         )
         supplement = response.text.strip()
