@@ -1,57 +1,53 @@
-# Obsidian Discord Bot Project 
+# Obsidian-discord連携Bot
 
-## Getting Started
+## 概要
 
-### Prerequisites
-- Python 3.8 or higher
-- `pip` (Python package installer)
+日々のDiscordでのやり取りを、Obsidianでの知識管理にシームレスに繋げるための高機能ボットです。指定したチャンネルの会話を自動で記録・整形するだけでなく、AIを活用して日々のメモを要約・タグ付けし、関連ノートを自動生成することで、情報の整理と再発見を強力にサポートします。
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-repo/Obsidian-discord.git
-   cd Obsidian-discord
-   ```
-2. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 主な機能
 
-### Configuration
-1. Create a `.env` file in the root directory of the project.
-2. Add your Discord bot token to the `.env` file:
-   ```
-   DISCORD_TOKEN=YOUR_BOT_TOKEN_HERE
-   ```
-   Replace `YOUR_BOT_TOKEN_HERE` with your actual bot token.
-3. Open `config.py` and set the `CHANNEL_ID` to the ID of the Discord channel where you want the bot to operate.
+### 1. メモ機能
 
-### Running the Bot
-To run the bot in the background and log its output to `bot.log`:
-```bash
-nohup .venv/bin/python3 -u main.py > bot.log 2>&1 &
-```
+- **自動メモ化**: `config.py`で指定したチャンネルの投稿を、日付ごとのデイリーノートにリアルタイムで自動追記します。
+- **豊富な情報拡充**:
+    - **URL要約**: 投稿されたURLのタイトルや説明を自動で取得し、メモに含めます。
+    - **画像対応**: 添付された画像は自動で保存され、Obsidian形式のリンク `![[...]]` としてメモに記載されます。
+    - **AIによる補足**: Gemini APIを利用し、投稿内容に関連する豆知識や補足情報を「AI's Small Tip」として自動で追記します。
+- **手動での追加**: 任意のチャンネルのメッセージを右クリックし、「アプリ」>「メモに追加」を選択することで、そのメッセージを強制的にその日のデイリーノートに追加できます。
 
-### Checking Logs
-To view the bot's logs, you can use:
-```bash
-tail -f bot.log
-```
-This command will display the log output in real-time.
+### 2. 整理・要約機能
 
-### Stopping the Bot
-To stop the bot, you first need to find its process ID (PID):
-```bash
-ps aux | grep main.py
-```
-Look for the line containing `main.py` and note the PID (the second column).
-Then, kill the process:
-```bash
-kill <PID>
-```
-Replace `<PID>` with the actual process ID.
+- **デイリー自動要約**: 毎日深夜（デフォルト 00:05）、前日分のデイリーノートの内容をAIが分析し、以下の処理を自動で行います。
+    1.  **要約の生成**: １日の会話のまとめを生成し、デイリーノートの末尾に「## まとめ」として追記します。
+    2.  **タグの抽出と関連ノートの自動生成**: 会話内容から関連キーワードをタグとして抽出し、各タグについての解説ページを`notes`ディレクトリに自動で作成します。
+    3.  **自動リンク**: 生成されたタグ解説ページへのリンク（バックリンク）をデイリーノートに追記し、情報の関連付けを自動化します。
+
+- **手動での要約実行**: ボットのオーナーは `/today_summary` コマンドを実行することで、その日のデイリーノートに対して手動で上記の要約・整理プロセスを実行できます。
+
+## セットアップ手順
+
+1.  **リポジトリのクローン**: `git clone <repository_url>`
+2.  **仮想環境の作成と有効化**: `python -m venv .venv && source .venv/bin/activate`
+3.  **ライブラリのインストール**: `pip install -r requirements.txt`
+4.  **設定ファイルの編集 (`config.py`)**:
+    `config.py` ファイルを開き、ご自身の環境に合わせて以下の変数の値を直接編集します。
+    *   `CHANNEL_ID`: 自動保存の対象としたいDiscordチャンネルのID。
+    *   `SAVE_DIR`: メモ（.mdファイル）を保存するディレクトリの**絶対パス**。
+    *   `IMAGE_SAVE_DIR`: 添付画像を保存するディレクトリの**絶対パス**。
+    *   `NOTES_DIR`: タグ解説ノートが格納されるディレクトリの**絶対パス**。
+
+5.  **.envファイルの作成**:
+    プロジェクトのルートディレクトリに `.env` ファイルを新規作成し、以下の内容を記述します。
+    ```env
+    DISCORD_TOKEN="YOUR_DISCORD_BOT_TOKEN"
+    GEMINI_API_KEY="YOUR_GOOGLE_API_KEY"
+    ```
+    *   `DISCORD_TOKEN`: お使いのDiscordボットのトークン。
+    *   `GEMINI_API_KEY`: Google AI Studioで取得したAPIキー。
+
+6.  **ボットの実行**: `python main.py`
+
+## 使用方法
+
+- **メモを取る**: `config.py`で設定したチャンネルに投稿するか、任意のメッセージを右クリックして「メモに追加」を選択します。
+- **１日のメモを整理する**: 自動実行を待つか、ボットのオーナーが `/today_summary` を実行します。
