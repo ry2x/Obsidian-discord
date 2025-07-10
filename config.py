@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CHANNEL_ID = 944090089376583711
+CHANNEL_ID = 794966343350616085
 SAVE_DIR = "/home/ry2x/Develop/Obsidian-discord/memos"
 IMAGE_SAVE_DIR = "/home/ry2x/Develop/Obsidian-discord/images"
 NOTES_DIR = "/home/ry2x/Develop/Obsidian-discord/notes"
