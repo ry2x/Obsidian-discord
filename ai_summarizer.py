@@ -1,12 +1,12 @@
-import google.generativeai as genai
-from google.generativeai import types
+from google import genai
 import config
 from logger_config import logger
 
 # APIキーの設定
 if not config.GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
-genai.configure(api_key=config.GEMINI_API_KEY)
+# The client uses the GEMINI_API_KEY environment variable automatically.
+client = genai.Client()
 
 def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, dict[str, str]]:
     """
@@ -25,7 +25,13 @@ def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, d
 
     1.  **要約**: 全体を200字程度の日本語で簡潔に要約してください。
     2.  **タグ抽出**: 内容から重要なキーワードを5つ以内選び出し、`#キーワード` の形式で列挙してください。
-    3.  **タグ解説**: 抽出された各キーワードについて、元のメモの内容と私の知識をもとに、個別に解説を行います。それぞれのキーワードに対しては、500字程度の詳細解説を記述します。解説の冒頭には、必ず `[[{date_str}]]` という形式で、今日の日付へのリンクを挿入してください。必要に応じてインターネットによる調査も行い、内容の正確性と深みを高めます。詳細解説には、関連する外部リンクや参考文献も適宜含めます。関連性の高い周辺情報についてさらに補足が必要な場合は、私の判断で新たなトピックやキーワードを追加し、その分もあわせて解説します。メモの中で重要と思われる単語や固有名詞は解説文の最後に`#単語`として記述してください。各キーワードごとの解説の区切りには、明確に --- を挿入してください。
+    3.  **タグ解説**: 抽出された各キーワードについて、元のメモの内容と私の知識をもとに、個別に解説を行います。
+    それぞれのキーワードに対しては、500字程度の詳細解説を記述します。
+    解説の冒頭には、必ず `[[{date_str}]]` という形式で、今日の日付へのリンクを挿入してください。
+    必要に応じてインターネットによる調査も行い、内容の正確性と深みを高めます。詳細解説には、関連する外部リンクや参考文献も適宜含めます。
+    関連性の高い周辺情報についてさらに補足が必要な場合は、私の判断で新たなトピックやキーワードを追加し、その分もあわせて解説します。
+    メモの中で重要と思われる単語や固有名詞は解説文の最後に`#単語`として記述してください。
+    各キーワードごとの解説の区切りには、明確に --- を挿入してください。
 
     ---
     [出力フォーマット]
@@ -48,17 +54,17 @@ def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, d
     """
 
     try:
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-        response = model.generate_content(
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
             contents=prompt
         )
 
         # レスポンスをセクションに分割
         sections = response.text.strip().split('---')
-        
+
         summary = sections[0].strip()
         tags_line = sections[1].strip()
-        
+
         explanations = {}
         for i in range(2, len(sections)):
             part = sections[i].strip()
@@ -92,16 +98,18 @@ def generate_flash_supplement(text: str) -> str:
         補足の文字列。
     """
     prompt = f"""
-    以下のメモの内容について、簡潔な補足や関連情報を100文字程度の日本語で記述してください。
+    以下のメモの内容について、簡潔な補足や関連情報を最大500文字程度の日本語で記述してください。
     重要なキーワードを抽出し、それについて簡潔に説明するような形式が望ましいです。
+    URLからの外部情報を参照する場合は、信頼性の高い情報源を選んでください。
+    また、与えられたURLとその概要の内容が異なる場合は、内容を優先しURLを無視してください。
 
     [入力テキスト]
     {text}
     """
 
     try:
-        model = genai.GenerativeModel(model_name="gemini-2.0-flash")
-        response = model.generate_content(
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
             contents=prompt
         )
         supplement = response.text.strip()
