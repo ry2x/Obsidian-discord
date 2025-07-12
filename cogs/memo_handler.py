@@ -11,13 +11,14 @@ from discord import app_commands, Interaction, Message
 import discord
 from ai_summarizer import generate_flash_supplement
 
+
 def get_template(date_obj):
     """指定された日付のテンプレート文字列を生成する"""
-    today_str = date_obj.strftime('%Y-%m-%d')
-    prev_day_str = (date_obj - timedelta(days=1)).strftime('%Y-%m-%d')
-    next_day_str = (date_obj + timedelta(days=1)).strftime('%Y-%m-%d')
-    prev_week_str = (date_obj - timedelta(days=7)).strftime('%Y-%m-%d')
-    next_week_str = (date_obj + timedelta(days=7)).strftime('%Y-%m-%d')
+    today_str = date_obj.strftime("%Y-%m-%d")
+    prev_day_str = (date_obj - timedelta(days=1)).strftime("%Y-%m-%d")
+    next_day_str = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+    prev_week_str = (date_obj - timedelta(days=7)).strftime("%Y-%m-%d")
+    next_week_str = (date_obj + timedelta(days=7)).strftime("%Y-%m-%d")
 
     return f"""{today_str}
 [[{prev_week_str}]]||[[{prev_day_str}]]||[[{next_day_str}]]||[[{next_week_str}]]
@@ -25,6 +26,7 @@ def get_template(date_obj):
 
 ## メモ
 """
+
 
 async def get_url_summary(url):
     """URLからタイトル、description、og:imageを取得する"""
@@ -35,27 +37,38 @@ async def get_url_summary(url):
                 logger.debug(f"URL: {url}, Status: {response.status}")
                 if response.status == 200:
                     html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    title = soup.title.string if soup.title else 'タイトルなし'
-                    description_tag = soup.find('meta', attrs={'name': 'description'})
-                    description = description_tag['content'] if description_tag else '説明文なし'
+                    soup = BeautifulSoup(html, "html.parser")
+                    title = soup.title.string if soup.title else "タイトルなし"
+                    description_tag = soup.find("meta", attrs={"name": "description"})
+                    description = (
+                        description_tag["content"] if description_tag else "説明文なし"
+                    )
 
                     og_image_url = None
-                    og_image_tag = soup.find('meta', property='og:image')
-                    if og_image_tag and 'content' in og_image_tag.attrs:
-                        og_image_url = og_image_tag['content']
+                    og_image_tag = soup.find("meta", property="og:image")
+                    if og_image_tag and "content" in og_image_tag.attrs:
+                        og_image_url = og_image_tag["content"]
                         logger.debug(f"Extracted og:image: {og_image_url}")
 
-                    logger.debug(f"Extracted Title: {title.strip()}, Description: {description.strip()}")
-                    return f"タイトル: {title.strip()}\n説明: {description.strip()}", og_image_url
+                    logger.debug(
+                        f"Extracted Title: {title.strip()}, Description: {description.strip()}"
+                    )
+                    return (
+                        f"タイトル: {title.strip()}\n説明: {description.strip()}",
+                        og_image_url,
+                    )
                 else:
-                    return f"ページの取得に失敗しました。ステータスコード: {response.status}", None
+                    return (
+                        f"ページの取得に失敗しました。ステータスコード: {response.status}",
+                        None,
+                    )
     except aiohttp.ClientError as e:
         logger.error(f"aiohttp ClientError fetching URL {url}: {e}")
         return "URLの取得中にネットワークエラーが発生しました。", None
     except Exception as e:
         logger.error(f"Unexpected error fetching or parsing URL {url}: {e}")
         return "URLの処理中に予期せぬエラーが発生しました。", None
+
 
 async def download_thumbnail(url, base_filename):
     """指定されたURLから画像をダウンロードし、適切な拡張子で保存する"""
@@ -64,24 +77,26 @@ async def download_thumbnail(url, base_filename):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status == 200:
-                    content_type = response.headers.get('Content-Type', '')
-                    if 'image/' in content_type:
+                    content_type = response.headers.get("Content-Type", "")
+                    if "image/" in content_type:
                         # Content-Typeから適切な拡張子を決定
-                        if 'image/jpeg' in content_type:
-                            ext = '.jpg'
-                        elif 'image/png' in content_type:
-                            ext = '.png'
-                        elif 'image/gif' in content_type:
-                            ext = '.gif'
-                        elif 'image/webp' in content_type:
-                            ext = '.webp'
+                        if "image/jpeg" in content_type:
+                            ext = ".jpg"
+                        elif "image/png" in content_type:
+                            ext = ".png"
+                        elif "image/gif" in content_type:
+                            ext = ".gif"
+                        elif "image/webp" in content_type:
+                            ext = ".webp"
                         else:
-                            logger.debug(f"Unsupported image content type: {content_type}")
+                            logger.debug(
+                                f"Unsupported image content type: {content_type}"
+                            )
                             return None
 
                         filename = f"{base_filename}{ext}"
                         save_path = os.path.join(config.IMAGE_SAVE_DIR, filename)
-                        with open(save_path, 'wb') as f:
+                        with open(save_path, "wb") as f:
                             f.write(await response.read())
                         logger.debug(f"Saved thumbnail: {save_path}")
                         return filename
@@ -89,7 +104,9 @@ async def download_thumbnail(url, base_filename):
                         logger.debug(f"URL content is not an image: {content_type}")
                         return None
                 else:
-                    logger.error(f"Failed to download thumbnail from {url}. Status: {response.status}")
+                    logger.error(
+                        f"Failed to download thumbnail from {url}. Status: {response.status}"
+                    )
                     return None
     except aiohttp.ClientError as e:
         logger.error(f"aiohttp ClientError downloading thumbnail {url}: {e}")
@@ -98,11 +115,12 @@ async def download_thumbnail(url, base_filename):
         logger.error(f"Unexpected error downloading thumbnail {url}: {e}")
         return None
 
+
 class MemoHandler(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.add_to_memo_context_menu = app_commands.ContextMenu(
-            name='メモに追加',
+            name="メモに追加",
             callback=self.add_to_memo_callback,
         )
         self.bot.tree.add_command(self.add_to_memo_context_menu)
@@ -125,24 +143,26 @@ class MemoHandler(commands.Cog):
 
         if not os.path.exists(file_path):
             template = get_template(today)
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(template)
 
-        timestamp = datetime.now().strftime('%H:%M')
+        timestamp = datetime.now().strftime("%H:%M")
         content_to_append = f"\n{timestamp}\n{message.content}\n"
 
         # 添付画像を保存してリンクを追記
         if message.attachments:
             logger.debug(f"Message has attachments.")
             for attachment in message.attachments:
-                if attachment.content_type and attachment.content_type.startswith('image/'):
+                if attachment.content_type and attachment.content_type.startswith(
+                    "image/"
+                ):
                     save_path = os.path.join(config.IMAGE_SAVE_DIR, attachment.filename)
                     await attachment.save(save_path)
                     content_to_append += f"\n![[{attachment.filename}]]\n"
                     logger.debug(f"Saved image: {save_path}")
 
         # URLを検出して要約とサムネイルを追加
-        url_match = re.search(r'https?://\S+', message.content)
+        url_match = re.search(r"https?://\S+", message.content)
         if url_match:
             url = url_match.group(0)
             logger.debug(f"URL detected: {url}")
@@ -151,13 +171,16 @@ class MemoHandler(commands.Cog):
 
             if og_image_url:
                 import hashlib
+
                 parsed_url = urlparse(og_image_url)
-                path_parts = parsed_url.path.split('/')
-                original_filename = path_parts[-1] if path_parts[-1] else 'image'
-                ext = os.path.splitext(original_filename)[1] or '.png'
+                path_parts = parsed_url.path.split("/")
+                original_filename = path_parts[-1] if path_parts[-1] else "image"
+                ext = os.path.splitext(original_filename)[1] or ".png"
                 hash_object = hashlib.md5(og_image_url.encode())
                 base_thumbnail_filename = f"thumbnail_{hash_object.hexdigest()}"
-                downloaded_filename = await download_thumbnail(og_image_url, base_thumbnail_filename)
+                downloaded_filename = await download_thumbnail(
+                    og_image_url, base_thumbnail_filename
+                )
                 if downloaded_filename:
                     content_to_append += f"\n![[{downloaded_filename}]]\n"
         else:
@@ -165,11 +188,15 @@ class MemoHandler(commands.Cog):
 
         # AIによる補足を生成
         supplement = generate_flash_supplement(message.content)
-        content_to_append += f"\n> [!info] AI's Small Tip\n> {supplement.replace('\n', '\n> ')}\n"
+        content_to_append += (
+            f"\n> [!info] AI's Small Tip\n> {supplement.replace('\n', '\n> ')}\n"
+        )
 
-        with open(file_path, 'a', encoding='utf-8') as f:
+        with open(file_path, "a", encoding="utf-8") as f:
             f.write(content_to_append)
-        logger.info(f"Appended message from {message.author.display_name} to {file_name}")
+        logger.info(
+            f"Appended message from {message.author.display_name} to {file_name}"
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
@@ -185,10 +212,14 @@ class MemoHandler(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         try:
             await self.process_message_for_memo(message, force_add=True)
-            await interaction.followup.send("メッセージを本日のメモに追加しました。", ephemeral=True)
+            await interaction.followup.send(
+                "メッセージを本日のメモに追加しました。", ephemeral=True
+            )
         except Exception as e:
             logger.error(f"Failed to add message to memo from context menu: {e}")
-            await interaction.followup.send("メモへの追加中にエラーが発生しました。", ephemeral=True)
+            await interaction.followup.send(
+                "メモへの追加中にエラーが発生しました。", ephemeral=True
+            )
 
 
 async def setup(bot):

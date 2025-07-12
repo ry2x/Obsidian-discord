@@ -1,4 +1,4 @@
-from google import genai
+from google import genai, types
 import config
 from logger_config import logger
 
@@ -8,7 +8,10 @@ if not config.GEMINI_API_KEY:
 # The client uses the GEMINI_API_KEY environment variable automatically.
 client = genai.Client()
 
-def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, dict[str, str]]:
+
+def summarize_and_tag_and_explain(
+    text: str, date_str: str
+) -> tuple[str, str, dict[str, str]]:
     """
     与えられたテキストを要約し、タグを生成し、各タグの解説を作成します。
 
@@ -56,11 +59,14 @@ def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, d
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=1.0,
+            ),
         )
 
         # レスポンスをセクションに分割
-        sections = response.text.strip().split('---')
+        sections = response.text.strip().split("---")
 
         summary = sections[0].strip()
         tags_line = sections[1].strip()
@@ -68,11 +74,11 @@ def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, d
         explanations = {}
         for i in range(2, len(sections)):
             part = sections[i].strip()
-            if part.startswith('[TAG:'):
+            if part.startswith("[TAG:"):
                 # タグ名と解説文を抽出
-                tag_name_end = part.find(']')
+                tag_name_end = part.find("]")
                 tag_name = part[5:tag_name_end]
-                explanation = part[tag_name_end+1:].strip()
+                explanation = part[tag_name_end + 1 :].strip()
                 explanations[tag_name] = explanation
 
         logger.info(f"--- AI Summarizer (Gemini) ---")
@@ -86,6 +92,7 @@ def summarize_and_tag_and_explain(text: str, date_str: str) -> tuple[str, str, d
     except Exception as e:
         logger.error(f"[Error] Failed to generate content with Gemini: {e}")
         return f"処理中にエラーが発生しました。", "#error", {}
+
 
 def generate_flash_supplement(text: str) -> str:
     """
@@ -109,8 +116,7 @@ def generate_flash_supplement(text: str) -> str:
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
+            model="gemini-2.0-flash", contents=prompt
         )
         supplement = response.text.strip()
         logger.info(f"--- AI Flash Supplement (Gemini) ---")

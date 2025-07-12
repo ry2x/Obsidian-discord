@@ -3,6 +3,7 @@ import sys
 from logging.handlers import TimedRotatingFileHandler
 import config
 
+
 def setup_logger():
     """ロガーを設定する"""
     log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
@@ -17,7 +18,7 @@ def setup_logger():
 
     # フォーマッタの作成
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     # コンソールハンドラの設定
@@ -27,12 +28,13 @@ def setup_logger():
 
     # ファイルハンドラの設定 (日付ベースでローテーション)
     file_handler = TimedRotatingFileHandler(
-        'bot.log', when='midnight', interval=1, backupCount=7, encoding='utf-8'
+        "bot.log", when="midnight", interval=1, backupCount=7, encoding="utf-8"
     )
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
     return logger
+
 
 # ロガーのインスタンスを作成
 logger = setup_logger()
