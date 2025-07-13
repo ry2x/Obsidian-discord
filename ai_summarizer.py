@@ -1,4 +1,5 @@
-from google import genai, types
+from google import genai
+from google.genai import types
 import config
 from logger_config import logger
 
