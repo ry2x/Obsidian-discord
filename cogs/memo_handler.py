@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from logger_config import logger
 from discord import app_commands, Interaction, Message
-import discord
 from ai_summarizer import generate_flash_supplement
 
 
@@ -151,7 +150,7 @@ class MemoHandler(commands.Cog):
 
         # 添付画像を保存してリンクを追記
         if message.attachments:
-            logger.debug(f"Message has attachments.")
+            logger.debug("Message has attachments.")
             for attachment in message.attachments:
                 if attachment.content_type and attachment.content_type.startswith(
                     "image/"
@@ -163,10 +162,12 @@ class MemoHandler(commands.Cog):
 
         # URLを検出して要約とサムネイルを追加
         url_match = re.search(r"https?://\S+", message.content)
+        url_summary = None
         if url_match:
             url = url_match.group(0)
             logger.debug(f"URL detected: {url}")
             summary, og_image_url = await get_url_summary(url)
+            url_summary = summary  # 概要を保存
             content_to_append += f"\n> URLの概要:\n> {summary.replace('\n', '\n> ')}\n"
 
             if og_image_url:
@@ -175,7 +176,7 @@ class MemoHandler(commands.Cog):
                 parsed_url = urlparse(og_image_url)
                 path_parts = parsed_url.path.split("/")
                 original_filename = path_parts[-1] if path_parts[-1] else "image"
-                ext = os.path.splitext(original_filename)[1] or ".png"
+                os.path.splitext(original_filename)[1] or ".png"
                 hash_object = hashlib.md5(og_image_url.encode())
                 base_thumbnail_filename = f"thumbnail_{hash_object.hexdigest()}"
                 downloaded_filename = await download_thumbnail(
@@ -187,7 +188,7 @@ class MemoHandler(commands.Cog):
             logger.debug(f"No URL detected in message: {message.content}")
 
         # AIによる補足を生成
-        supplement = generate_flash_supplement(message.content)
+        supplement = generate_flash_supplement(message.content, url_summary=url_summary)
         content_to_append += (
             f"\n> [!info] AI's Small Tip\n> {supplement.replace('\n', '\n> ')}\n"
         )
