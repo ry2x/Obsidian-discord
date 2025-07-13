@@ -9,6 +9,8 @@ if not config.GEMINI_API_KEY:
 # The client uses the GEMINI_API_KEY environment variable automatically.
 client = genai.Client()
 
+grounding_tool = types.Tool(google_search=types.GoogleSearch())
+
 
 def summarize_and_tag_and_explain(
     text: str, date_str: str
@@ -63,6 +65,7 @@ def summarize_and_tag_and_explain(
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=1.0,
+                tools=[grounding_tool],
             ),
         )
 
@@ -82,47 +85,61 @@ def summarize_and_tag_and_explain(
                 explanation = part[tag_name_end + 1 :].strip()
                 explanations[tag_name] = explanation
 
-        logger.info(f"--- AI Summarizer (Gemini) ---")
+        logger.info("--- AI Summarizer (Gemini) ---")
         logger.info(f"Generated Summary: {summary}")
         logger.info(f"Generated Tags: {tags_line}")
         logger.info(f"Generated Explanations: {len(explanations)} tags")
-        logger.info(f"---------------------------------")
+        logger.info("---------------------------------")
 
         return summary, tags_line, explanations
 
     except Exception as e:
         logger.error(f"[Error] Failed to generate content with Gemini: {e}")
-        return f"処理中にエラーが発生しました。", "#error", {}
+        return "処理中にエラーが発生しました。", "#error", {}
 
 
-def generate_flash_supplement(text: str) -> str:
+def generate_flash_supplement(text: str, url_summary: str = None) -> str:
     """
-    与えられたテキストに対して、短い補足を生成します。
+    与えられたテキストやURLの概要に対して、短い補足を生成します。
 
     Args:
         text: 対象のテキスト。
+        url_summary: URLの概要（存在する場合）。
 
     Returns:
         補足の文字列。
     """
-    prompt = f"""
-    以下のメモの内容について、簡潔な補足や関連情報を最大500文字程度の日本語で記述してください。
-    重要なキーワードを抽出し、それについて簡潔に説明するような形式が望ましいです。
-    URLからの外部情報を参照する場合は、信頼性の高い情報源を選んでください。
-    また、与えられたURLとその概要の内容が異なる場合は、内容を優先しURLを無視してください。
+    prompt_parts = [
+        "以下の情報について、簡潔な補足や関連情報を最大500文字程度の日本語で記述してください。",
+        "重要なキーワードを抽出し、それについて簡潔に説明するような形式が望ましいです。",
+        "URLからの外部情報を参照する場合は、信頼性の高い情報源を選んでください。",
+        "\n[入力テキスト]",
+        text,
+    ]
 
-    [入力テキスト]
-    {text}
-    """
+    if url_summary:
+        prompt_parts.extend(
+            [
+                "\n[URLの概要]",
+                url_summary,
+            ]
+        )
+
+    prompt = "\n".join(prompt_parts)
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash", contents=prompt
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=1.0,
+                tools=[grounding_tool],
+            ),
         )
         supplement = response.text.strip()
-        logger.info(f"--- AI Flash Supplement (Gemini) ---")
+        logger.info("--- AI Flash Supplement (Gemini) ---")
         logger.info(f"Generated Supplement: {supplement}")
-        logger.info(f"---------------------------------")
+        logger.info("---------------------------------")
         return supplement
 
     except Exception as e:
