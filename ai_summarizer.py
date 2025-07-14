@@ -2,6 +2,13 @@ from google import genai
 from google.genai import types
 import config
 from logger_config import logger
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+from google.api_core import exceptions
 
 # APIキーの設定
 if not config.GEMINI_API_KEY:
@@ -9,9 +16,15 @@ if not config.GEMINI_API_KEY:
 # The client uses the GEMINI_API_KEY environment variable automatically.
 client = genai.Client()
 
-grounding_tool = types.Tool(google_search=types.GoogleSearch())
+# 検索ツールの設定 - google_search_retrieval を使用
+grounding_tool = types.Tool(google_search_retrieval=types.GoogleSearchRetrieval())
 
 
+@retry(
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(exceptions.ResourceExhausted),
+)
 def summarize_and_tag_and_explain(
     text: str, date_str: str
 ) -> tuple[str, str, dict[str, str]]:
@@ -93,11 +106,29 @@ def summarize_and_tag_and_explain(
 
         return summary, tags_line, explanations
 
+    except exceptions.ResourceExhausted as e:
+        logger.error(f"[Error] Failed to generate content with Gemini: {e}")
+        # Add more detailed error message for quota exceeded
+        if "quota" in str(e).lower():
+            logger.warning(
+                "API usage quota exceeded. Consider upgrading your plan or waiting before retrying."
+            )
+            return (
+                "APIの使用制限に達しました。しばらく時間をおいてから再試行してください。",
+                "#api-limit-error",
+                {},
+            )
+        raise e  # Reraise other ResourceExhausted errors to be caught by tenacity
     except Exception as e:
         logger.error(f"[Error] Failed to generate content with Gemini: {e}")
         return "処理中にエラーが発生しました。", "#error", {}
 
 
+@retry(
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(exceptions.ResourceExhausted),
+)
 def generate_flash_supplement(text: str, url_summary: str = None) -> str:
     """
     与えられたテキストやURLの概要に対して、短い補足を生成します。
@@ -142,11 +173,25 @@ def generate_flash_supplement(text: str, url_summary: str = None) -> str:
         logger.info("---------------------------------")
         return supplement
 
+    except exceptions.ResourceExhausted as e:
+        logger.error(f"[Error] Failed to generate flash supplement with Gemini: {e}")
+        # Add more detailed error message for quota exceeded
+        if "quota" in str(e).lower():
+            logger.warning(
+                "API usage quota exceeded. Consider upgrading your plan or waiting before retrying."
+            )
+            return "APIの使用制限に達しました。しばらく時間をおいてから再試行するか、APIプランのアップグレードをご検討ください。"
+        raise e  # Reraise other ResourceExhausted errors to be caught by tenacity
     except Exception as e:
         logger.error(f"[Error] Failed to generate flash supplement with Gemini: {e}")
         return "補足の生成中にエラーが発生しました。"
 
 
+@retry(
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(exceptions.ResourceExhausted),
+)
 def extract_topics(text: str) -> list[str]:
     """
     与えられたテキストから重要なキーワードや話題を抽出します。
@@ -179,6 +224,69 @@ def extract_topics(text: str) -> list[str]:
         logger.info("------------------------------------")
         return topics
 
+    except exceptions.ResourceExhausted as e:
+        logger.error(f"[Error] Failed to extract topics with Gemini: {e}")
+        # Add more detailed error message for quota exceeded
+        if "quota" in str(e).lower():
+            logger.warning(
+                "API usage quota exceeded. Consider upgrading your plan or waiting before retrying."
+            )
+            return [
+                "APIの使用制限に達しました。しばらく時間をおいてから再試行してください。"
+            ]
+        raise e  # Reraise other ResourceExhausted errors to be caught by tenacity
     except Exception as e:
         logger.error(f"[Error] Failed to extract topics with Gemini: {e}")
         return ["トピックの抽出中にエラーが発生しました。"]
+
+
+@retry(
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(exceptions.ResourceExhausted),
+)
+def generate_topic_summary(topic: str) -> str:
+    """
+    与えられたトピックの概要や要約を生成します。
+
+    Args:
+        topic: 概要を生成するトピック。
+
+    Returns:
+        トピックの概要または要約。
+    """
+    prompt = f"""
+    以下のトピックについて、簡潔な概要または要約を最大500文字程度の日本語で記述してください。
+    必要に応じてインターネットによる調査も行い、内容の正確性と深みを高めてください。
+
+    [トピック]
+    {topic}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                tools=[grounding_tool],
+            ),
+        )
+        summary = response.text.strip()
+        logger.info("--- AI Topic Summary (Gemini) ---")
+        logger.info(f"Generated Summary for '{topic}': {summary}")
+        logger.info("---------------------------------")
+        return summary
+
+    except exceptions.ResourceExhausted as e:
+        logger.error(f"[Error] Failed to generate topic summary with Gemini: {e}")
+        # Add more detailed error message for quota exceeded
+        if "quota" in str(e).lower():
+            logger.warning(
+                "API usage quota exceeded. Consider upgrading your plan or waiting before retrying."
+            )
+            return "APIの使用制限に達しました。しばらく時間をおいてから再試行するか、APIプランのアップグレードをご検討ください。"
+        raise e  # Reraise other ResourceExhausted errors to be caught by tenacity
+    except Exception as e:
+        logger.error(f"[Error] Failed to generate topic summary with Gemini: {e}")
+        return "概要の生成中にエラーが発生しました。"
