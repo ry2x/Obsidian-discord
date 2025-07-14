@@ -145,3 +145,40 @@ def generate_flash_supplement(text: str, url_summary: str = None) -> str:
     except Exception as e:
         logger.error(f"[Error] Failed to generate flash supplement with Gemini: {e}")
         return "補足の生成中にエラーが発生しました。"
+
+
+def extract_topics(text: str) -> list[str]:
+    """
+    与えられたテキストから重要なキーワードや話題を抽出します。
+
+    Args:
+        text: 対象のテキスト。
+
+    Returns:
+        キーワードや話題のリスト。
+    """
+    prompt = f"""
+    以下のテキストから、重要なキーワードや話題を5つ以内で抽出してください。
+    各項目は改行で区切って、単語や短いフレーズのリストとして出力してください。
+
+    [入力テキスト]
+    {text}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+            ),
+        )
+        topics = response.text.strip().split("\n")
+        logger.info("--- AI Topic Extractor (Gemini) ---")
+        logger.info(f"Extracted Topics: {topics}")
+        logger.info("------------------------------------")
+        return topics
+
+    except Exception as e:
+        logger.error(f"[Error] Failed to extract topics with Gemini: {e}")
+        return ["トピックの抽出中にエラーが発生しました。"]
