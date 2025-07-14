@@ -1,3 +1,4 @@
+import discord
 from discord.ext import commands
 import os
 import re
@@ -7,8 +8,13 @@ import aiohttp
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from logger_config import logger
-from discord import app_commands, Interaction, Message
-from ai_summarizer import generate_flash_supplement
+from discord import app_commands, Interaction, Message, SelectOption
+from discord.ui import Select, View
+from ai_summarizer import (
+    generate_flash_supplement,
+    extract_topics,
+    generate_topic_summary,
+)
 
 
 def get_template(date_obj):
@@ -124,6 +130,18 @@ class MemoHandler(commands.Cog):
         )
         self.bot.tree.add_command(self.add_to_memo_context_menu)
 
+        self.extract_topic_context_menu = app_commands.ContextMenu(
+            name="単語/話題を抽出してメモ",
+            callback=self.extract_topic_callback,
+        )
+        self.bot.tree.add_command(self.extract_topic_context_menu)
+
+        self.lookup_topic_context_menu = app_commands.ContextMenu(
+            name="単語/話題を調べる",
+            callback=self.lookup_topic_callback,
+        )
+        self.bot.tree.add_command(self.lookup_topic_context_menu)
+
         # 保存ディレクトリが存在しない場合は作成
         for dir_path in [config.SAVE_DIR, config.IMAGE_SAVE_DIR]:
             if not os.path.exists(dir_path):
@@ -222,6 +240,193 @@ class MemoHandler(commands.Cog):
                 "メモへの追加中にエラーが発生しました。", ephemeral=True
             )
 
+    async def extract_topic_callback(self, interaction: Interaction, message: Message):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            topics = []
+            # メッセージ内のURLを抽出
+            url_matches = re.findall(r"https?://\S+", message.content)
+            if url_matches:
+                topics.extend(url_matches)
+
+            # AIでトピックを抽出
+            ai_topics = extract_topics(message.content)
+            topics.extend(ai_topics)
+
+            if not topics:
+                await interaction.followup.send(
+                    "抽出できる単語や話題が見つかりませんでした。", ephemeral=True
+                )
+                return
+
+            # 重複を削除し、リストをユニークにする
+            topics = list(dict.fromkeys(topics))
+
+            view = TopicSelectView(topics, message)
+            await interaction.followup.send(
+                "メモに追加するトピックを選択してください。", view=view, ephemeral=True
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to extract topics from context menu: {e}")
+            await interaction.followup.send(
+                "トピックの抽出中にエラーが発生しました。", ephemeral=True
+            )
+
+    async def _handle_add_topic_to_memo(
+        self, interaction: Interaction, selected_topic: str, original_message: Message
+    ):
+        today = datetime.now().date()
+        file_name = f"{today.strftime('%Y-%m-%d')}.md"
+        file_path = os.path.join(config.SAVE_DIR, file_name)
+
+        if not os.path.exists(file_path):
+            template = get_template(today)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(template)
+
+        timestamp = datetime.now().strftime("%H:%M")
+
+        # AIによる補足を生成
+        supplement = generate_flash_supplement(selected_topic)
+        content_to_append = f"\n{timestamp}\n{selected_topic}\n"
+        content_to_append += (
+            f"\n> [!info] AI's Small Tip\n> {supplement.replace('\n', '\n> ')}\n"
+        )
+
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(content_to_append)
+
+        logger.info(
+            f"Appended topic '{selected_topic}' from {original_message.author.display_name} to {file_name}"
+        )
+        await interaction.followup.send(
+            f"トピック「{selected_topic}」を本日のメモに追加しました。", ephemeral=True
+        )
+
+    async def _handle_lookup_topic_selection(
+        self, interaction: Interaction, selected_topic: str, original_message: Message
+    ):
+        summary = generate_topic_summary(selected_topic)
+        view = SummaryDisplayView(selected_topic, summary)
+        await interaction.followup.send(
+            f"**{selected_topic}** の概要:\n{summary}", view=view, ephemeral=True
+        )
+
+    async def lookup_topic_callback(self, interaction: Interaction, message: Message):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            topics = []
+            # メッセージ内のURLを抽出
+            url_matches = re.findall(r"https?://\S+", message.content)
+            if url_matches:
+                topics.extend(url_matches)
+
+            # AIでトピックを抽出
+            ai_topics = extract_topics(message.content)
+            topics.extend(ai_topics)
+
+            if not topics:
+                await interaction.followup.send(
+                    "抽出できる単語や話題が見つかりませんでした。", ephemeral=True
+                )
+                return
+
+            # 重複を削除し、リストをユニークにする
+            topics = list(dict.fromkeys(topics))
+
+            view = TopicSelectView(topics, message, self, "lookup_topic")
+            await interaction.followup.send(
+                "概要を調べるトピックを選択してください。", view=view, ephemeral=True
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to lookup topics from context menu: {e}")
+            await interaction.followup.send(
+                "トピックの検索中にエラーが発生しました。", ephemeral=True
+            )
+
 
 async def setup(bot):
     await bot.add_cog(MemoHandler(bot))
+
+
+class TopicSelectView(View):
+    def __init__(
+        self,
+        topics: list[str],
+        original_message: Message,
+        handler_instance,
+        callback_type: str,
+    ):
+        super().__init__(timeout=180)
+        self.original_message = original_message
+        self.handler_instance = handler_instance  # Reference to MemoHandler instance
+        self.callback_type = callback_type
+        options = [SelectOption(label=topic, value=topic) for topic in topics]
+        self.select = Select(
+            placeholder="トピックを選択してください...",
+            options=options,
+            min_values=1,
+            max_values=1,
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+        selected_topic = self.select.values[0]
+
+        if self.callback_type == "add_to_memo":
+            await self.handler_instance._handle_add_topic_to_memo(
+                interaction, selected_topic, self.original_message
+            )
+        elif self.callback_type == "lookup_topic":
+            await self.handler_instance._handle_lookup_topic_selection(
+                interaction, selected_topic, self.original_message
+            )
+        else:
+            await interaction.followup.send(
+                "不明なコールバックタイプです。", ephemeral=True
+            )
+
+
+class SummaryDisplayView(View):
+    def __init__(self, topic: str, summary: str):
+        super().__init__(timeout=180)
+        self.topic = topic
+        self.summary = summary
+
+    @discord.ui.button(
+        label="メモに追加",
+        custom_id="add_summary_to_memo",
+        style=discord.ButtonStyle.primary,
+    )
+    async def add_summary_to_memo_button(
+        self, interaction: Interaction, button: discord.ui.Button
+    ):
+        await interaction.response.defer(ephemeral=True)
+        today = datetime.now().date()
+        file_name = f"{today.strftime('%Y-%m-%d')}.md"
+        file_path = os.path.join(config.SAVE_DIR, file_name)
+
+        if not os.path.exists(file_path):
+            template = get_template(today)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(template)
+
+        timestamp = datetime.now().strftime("%H:%M")
+        content_to_append = f"""
+            {timestamp}
+            ## {self.topic} の概要
+            {self.summary}
+        """
+
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(content_to_append)
+
+        logger.info(f"Appended summary for '{self.topic}' to {file_name}")
+        await interaction.followup.send(
+            f"トピック「{self.topic}」の概要を本日のメモに追加しました。",
+            ephemeral=True,
+        )
