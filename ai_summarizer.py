@@ -16,8 +16,8 @@ if not config.GEMINI_API_KEY:
 # The client uses the GEMINI_API_KEY environment variable automatically.
 client = genai.Client()
 
-# 検索ツールの設定 - google_search_retrieval を使用
-grounding_tool = types.Tool(google_search_retrieval=types.GoogleSearchRetrieval())
+# 検索ツールの設定 - google_search を使用
+grounding_tool = types.Tool(google_search=types.GoogleSearch())
 
 
 @retry(
@@ -144,6 +144,7 @@ def generate_flash_supplement(text: str, url_summary: str = None) -> str:
         "以下の情報について、簡潔な補足や関連情報を最大500文字程度の日本語で記述してください。",
         "重要なキーワードを抽出し、それについて簡潔に説明するような形式が望ましいです。",
         "URLからの外部情報を参照する場合は、信頼性の高い情報源を選んでください。",
+        "**補足情報と関連情報を直接記述してください。冒頭の挨拶や確認の文言は不要です。**",
         "\n[入力テキスト]",
         text,
     ]
