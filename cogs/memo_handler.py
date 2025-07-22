@@ -421,6 +421,7 @@ class SummaryDisplayView(View):
             ## {self.topic} の概要
             {self.summary}
         """
+        content_to_append = f"\n{timestamp}\n{self.topic}\n> [info] {self.topic} の検索結果 by AI\n> {self.summary.replace('\n', '\n> ')}\n"
 
         with open(file_path, "a", encoding="utf-8") as f:
             f.write(content_to_append)
