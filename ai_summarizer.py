@@ -18,6 +18,9 @@ client = genai.Client()
 
 # 検索ツールの設定 - google_search を使用
 grounding_tool = types.Tool(google_search=types.GoogleSearch())
+grounding_tool_retrieval = types.Tool(
+    google_search_retrieval=types.GoogleSearchRetrieval()
+)
 
 
 @retry(
@@ -259,18 +262,18 @@ def generate_topic_summary(topic: str) -> str:
     prompt = f"""
     以下のトピックについて、簡潔な概要または要約を最大500文字程度の日本語で記述してください。
     必要に応じてインターネットによる調査も行い、内容の正確性と深みを高めてください。
+    改行を文末に毎度入れてください。
 
     [トピック]
     {topic}
     """
-
     try:
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                tools=[grounding_tool],
+                tools=[grounding_tool_retrieval],
             ),
         )
         summary = response.text.strip()
