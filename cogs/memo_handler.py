@@ -262,7 +262,7 @@ class MemoHandler(commands.Cog):
             # 重複を削除し、リストをユニークにする
             topics = list(dict.fromkeys(topics))
 
-            view = TopicSelectView(topics, message)
+            view = TopicSelectView(topics, message, self, "add_to_memo")
             await interaction.followup.send(
                 "メモに追加するトピックを選択してください。", view=view, ephemeral=True
             )
